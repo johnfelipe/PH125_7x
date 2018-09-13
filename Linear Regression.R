@@ -47,3 +47,34 @@ AB_plot <- Teams %>%
   geom_point(alpha = 0.5)
 ggsave("AB_plot.png")
 AB_plot
+
+# Correlation example using HistData package
+library(HistData)
+?`HistData-package`
+# load the GaltonFamilies data set
+data("GaltonFamilies")
+# check the str of the data
+str(GaltonFamilies)
+
+# look at the relationship between the father's and 1st son's heights
+# create a small data set
+
+galton_heights <- as.tibble(GaltonFamilies %>% 
+  filter(childNum == 1 & gender == "male") %>% 
+  select(father, childHeight) %>%
+  rename(son = childHeight))
+galton_heights
+
+# look at some summary stats
+galton_heights %>% 
+  summarize(mean(father), sd(father), mean(son), sd(son))
+
+# and now a plot
+galton_heights %>% 
+  ggplot(aes(father,son)) +
+  geom_point(alpha = 0.5)
+
+# let's check correlation. using the %>%  and the summarize func calling
+# cor
+galton_heights %>% 
+  summarize(cor(father,son))
