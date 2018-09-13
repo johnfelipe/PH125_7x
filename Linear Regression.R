@@ -78,3 +78,27 @@ galton_heights %>%
 # cor
 galton_heights %>% 
   summarize(cor(father,son))
+
+# sample correlation is a random variable. here we're going to run # a monte carlo simulation a 1000x taking a sample size of 25
+# "sample_n" samples an entire row, not just a single value like
+# "sample"
+
+B <- 10000
+N <- 50
+R <- replicate(B, {
+  sample_n(galton_heights, N, replace = TRUE) %>% 
+    summarize(r = cor(father,son)) %>% 
+    .$r
+})
+
+tibble(R) %>% 
+  ggplot(aes(R)) +
+  geom_histogram(binwidth = 0.05, color = "black")
+
+tibble(R) %>% 
+  summarize(mean(R), sd(R))
+
+tibble(R) %>% 
+  ggplot(aes(sample = R)) +
+  geom_qq() +
+  geom_qq_line()
