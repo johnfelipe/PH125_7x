@@ -77,14 +77,14 @@ galton_heights %>%
 # let's check correlation. using the %>%  and the summarize func calling
 # cor
 galton_heights %>% 
-  summarize(cor(father,son))
+  summarize(mean(father), sd(father), mean(son), sd(son),cor(father,son))
 
 # sample correlation is a random variable. here we're going to run # a monte carlo simulation a 1000x taking a sample size of 25
 # "sample_n" samples an entire row, not just a single value like
 # "sample"
 
-B <- 10000
-N <- 50
+B <- 1000
+N <- 75
 R <- replicate(B, {
   sample_n(galton_heights, N, replace = TRUE) %>% 
     summarize(r = cor(father,son)) %>% 
@@ -98,7 +98,13 @@ tibble(R) %>%
 tibble(R) %>% 
   summarize(mean(R), sd(R))
 
+# for a large enough sample size the R ~ N, with
+# E[R] = r  and SD = sqrt((1-r^2)/(N-2))
+# use R to estimate r
 tibble(R) %>% 
   ggplot(aes(sample = R)) +
   geom_qq() +
-  geom_qq_line()
+  geom_abline(intercept = mean(R),
+              slope = sqrt((1 - mean(R)^2)/(N-1)))
+
+
