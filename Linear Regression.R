@@ -79,9 +79,12 @@ galton_heights %>%
 galton_heights %>% 
   summarize(mean(father), sd(father), mean(son), sd(son),cor(father,son))
 
-# sample correlation is a random variable. here we're going to run # a monte carlo simulation a 1000x taking a sample size of 25
-# "sample_n" samples an entire row, not just a single value like
-# "sample"
+# sample correlation is a random variable. here we're going to run # a monte carlo
+# simulation a 1000x taking various sample sizes of 25, 50, 75
+# "sample_n" samples an entire row, not just a single value like "sample"
+# We use sample_n since we're looking at the correlation bewteen father & son paired
+# heights
+# Note that the obect "R" is a vector of values
 
 B <- 1000
 N <- 75
@@ -91,6 +94,8 @@ R <- replicate(B, {
     .$r
 })
 
+str(R)
+# using R as a tibble
 tibble(R) %>% 
   ggplot(aes(R)) +
   geom_histogram(binwidth = 0.05, color = "black")
@@ -98,13 +103,22 @@ tibble(R) %>%
 tibble(R) %>% 
   summarize(mean(R), sd(R))
 
-# for a large enough sample size the R ~ N, with
+# for a large enough sample size then R ~ N, with
 # E[R] = r  and SD = sqrt((1-r^2)/(N-2))
 # use R to estimate r
 tibble(R) %>% 
   ggplot(aes(sample = R)) +
   geom_qq() +
   geom_abline(intercept = mean(R),
-              slope = sqrt((1 - mean(R)^2)/(N-1)))
+              slope = sqrt((1 - mean(R)^2)/(N-2)))
 
+# stratification expample. Predictig the heigth of a son given no information on father
+# use the average of son
 
+galton_heights %>% 
+  summarize(mean(son), sd(son))
+# if told the father is 72 inches then prediction based on/conditioned on the 
+# father's height (son|father = 72)
+galton_heights %>% 
+  filter(round(father) == 72) %>% 
+  summarize(mean(son), sd(son))
