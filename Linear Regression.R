@@ -163,16 +163,16 @@ mu_y <- mean(galton_heights$ son) # predicted var mean
 s_x <- sd(galton_heights$father) # preditor var SD
 s_y <- sd(galton_heights$son) # predicted var SD
 r <- cor(galton_heights$father,galton_heights$son) # cor coeff
-m <- r*s_y/s_x # slope
-b <- mu_y - m*mu_x # intercept
-m
-b
+m_1 <- r*s_y/s_x # slope
+b_1 <- mu_y - m*mu_x # intercept
+m_1
+b_1
 
 # a plot of the sons heights vs fathers heights and the intercept and slope of regreesion line above
 galton_heights %>% 
   ggplot(aes(father, son)) +
   geom_point(alpha = 0.5) +
-  geom_abline(intercept = b, slope = m)
+  geom_abline(intercept = b_1, slope = m_1)
 
 # Bivariate Normal Distribution example
 # plotting sons heigth vs standardized fathers height
@@ -187,12 +187,150 @@ galton_heights %>%
 
 # computing E[father|son] regression line using the values above
 
-m <- r*s_x/s_y #slope
-b <- mu_x - m*mu_y
-m
-b
+m_2 <- r*s_x/s_y #slope
+b_2 <- mu_x - m*mu_y
+m_2
+b_2
 # a plot of the fathers heights vs sons heights and the intercept and slope of regreesion line above
 galton_heights %>% 
-  ggplot(aes(son, father)) +
+  ggplot(aes(father,son)) +
   geom_point(alpha = 0.5) +
-  geom_abline(intercept = b, slope = m)
+  geom_abline(intercept = b_1, slope = m_1, color = "blue") +
+  geom_abline(intercept = -b_2/m_2, slope = 1/m_2, color = "red")
+
+# confounding example using baseball example 
+Teams %>%
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(Singles = (H-HR-X2B-X3B)/G, BB = BB/G, HR = HR/G) %>% 
+  summarize(cor(BB,HR), cor(Singles, HR), cor(BB, Singles))
+
+# Stratification and Multivariant Regression
+# making a HR stratified data set for example
+
+dat <- Teams %>% 
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(HR_strata = round(HR/G,1), BB_per_game = BB/G, R_per_game = R/G) %>% 
+  filter(HR_strata >= 0.4 & HR_strata <= 1.2)
+
+# make a plot of R_per_game vs BB_per_game for each HR_strata
+dat %>%
+  ggplot(aes(BB_per_game, R_per_game)) + 
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~HR_strata)
+
+# looking at slope R_per_game vs BB_per_game for each HR_strata
+
+dat %>% 
+  group_by(HR_strata) %>% 
+  summarise(slope = cor(BB_per_game,R_per_game)*sd(R_per_game)/sd(BB_per_game))
+
+# Stratification and Multivariant Regression
+# making a BB stratified data set for example
+
+dat <- Teams %>% 
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(BB_strata = round(BB/G,1), HR_per_game = HR/G, R_per_game = R/G)%>% 
+  filter(BB_strata >= 2.8 & BB_strata <= 3.9)
+
+# make a plot of R_per_game vs HR_per_game for each BB_strata
+dat %>%
+  ggplot(aes(HR_per_game, R_per_game)) + 
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~BB_strata)
+
+# looking at slope R_per_game vs BB_per_game for each HR_strata
+
+dat %>% 
+  group_by(BB_strata) %>% 
+  summarise(slope = cor(HR_per_game,R_per_game)*sd(R_per_game)/sd(HR_per_game))
+
+lm(son ~ father, data = galton_heights)
+
+galton_heights <- galton_heights %>% 
+  mutate(father_centered = father - mean(father))
+
+lm(son ~ father_centered, data = galton_heights)
+
+# a function to compute RSS for a pair of data points
+
+rss <- function(beta0,beta1, data){
+  resid <- galton_heights$son - (beta0 + beta1 * galton_heights$father)
+  return(sum(resid^2))
+}
+
+# looking/searching for the beta1 that minimizes the RSS w/ beta0 fixed at 25 and 36
+
+beta1 <- seq(0,1, len= nrow(galton_heights))
+results <- tibble(beta1 = beta1,
+                  rss = sapply(beta1, rss, beta0 = 36))
+
+filter(results, rss == min(rss))
+results %>%
+  ggplot(aes(beta1, rss)) +
+  geom_line() +
+  geom_line(aes(beta1, rss), col = 2)
+
+# using the "lm' function to predict R_per_game based on BB_per_game and HR_per_game
+dat <- Teams %>% 
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(HR_per_game = HR/G, BB_per_game = BB/G, R_per_game = R/G)
+str(dat)
+fit <- lm(R_per_game ~ HR_per_game + BB_per_game, data = dat)
+summary(fit)
+
+# using monte carlo simultion to estimate the LSE
+B <- 1000
+N <- 50
+lse <- replicate(B, {
+  sample_n(galton_heights, N, replace = TRUE) %>% 
+    lm(son ~ father, data = .) %>%
+    .$coef
+})
+lse <- tibble(beta_0 = lse[1,], beta_1 = lse[2,])
+lse
+
+# plotting beta_0 and beta_1
+library(gridExtra)
+p1 <- lse %>% 
+  ggplot(aes(beta_0)) +
+  geom_histogram(binwidth = 5, color = 'black') 
+p2 <- lse %>% 
+  ggplot(aes(beta_1)) +
+  geom_histogram(binwidth = 0.1, color = 'black') 
+grid.arrange(p1,p2, ncol = 2)
+
+sample_n(galton_heights, N, replace = TRUE) %>% 
+  lm(son ~ father, data = .) %>%
+  summary
+
+lse %>% 
+  summarise(se_0 = sd(beta_0), se_1 = sd(beta_1))
+
+galton_heights %>% 
+  ggplot(aes(son,father)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+galton_heights %>% 
+  mutate(Y_hat = predict(lm(son ~ father, data = .))) %>% 
+  ggplot(aes(father, Y_hat)) + geom_line()
+
+model <- lm(son ~ father, data = galton_heights)
+predictions <- predict(model, interval = c("confidence"), level = 0.95)
+head(predictions)
+data <- as.tibble(predictions) %>% bind_cols(father = galton_heights$father)
+data
+ggplot(data, aes(x = father, y = fit)) +
+  geom_line(color = "blue", size = 1) + 
+  geom_ribbon(aes(ymin=lwr, ymax=upr), alpha=0.2) + 
+  geom_point(data = galton_heights, aes(x = father, y = son))
+
+tibble(id = c(1,2,3), func = c(mean, median, sd))
+
+dat <- as.tibble(dat)
+dat
+dat %>% 
+  group_by(HR_per_game) %>% 
+  do(fit = lm(R_per_game ~ BB_per_game, data = .))
