@@ -122,3 +122,77 @@ galton_heights %>%
 galton_heights %>% 
   filter(round(father) == 72) %>% 
   summarize(mean(son), sd(son))
+
+# strafying the fathers heights' to the nearest integer and plotting
+
+galton_heights %>% 
+  mutate(father_strata = factor(round(father))) %>% 
+  ggplot(aes(father_strata, son)) +
+  geom_boxplot() +
+  geom_point()
+
+# a plot sons' heights conditioned on the fathers height
+galton_heights %>% 
+  mutate(father = round(father)) %>% 
+  group_by(father) %>% 
+  summarize(son_conditional_ave = mean(son)) %>% 
+  ggplot(aes(father, son_conditional_ave)) +
+  geom_point()
+
+# ploting the standardized father son heigths and adding a line
+# with slope = to the correlation coef.
+# Note "scale()" automatically computes the standardized heights
+
+r <- galton_heights %>% 
+      summarize(r = cor(father,son)) %>% 
+      .$r
+galton_heights %>% 
+  mutate(father = round(father)) %>% 
+  group_by(father) %>% 
+  summarize(son = mean(son)) %>% 
+  mutate(z_father = scale(father), z_son = scale(son)) %>% 
+  ggplot(aes(z_father, z_son)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = r)
+  
+#  using the regression line formula to the intercept and slope
+# slope "m" = r*s_y/s_x. words m = cor(x,y) coef*sd predicted var/sd predictor var
+# E[son|father]
+mu_x <- mean(galton_heights$father) # predictor var mean
+mu_y <- mean(galton_heights$ son) # predicted var mean
+s_x <- sd(galton_heights$father) # preditor var SD
+s_y <- sd(galton_heights$son) # predicted var SD
+r <- cor(galton_heights$father,galton_heights$son) # cor coeff
+m <- r*s_y/s_x # slope
+b <- mu_y - m*mu_x # intercept
+m
+b
+
+# a plot of the sons heights vs fathers heights and the intercept and slope of regreesion line above
+galton_heights %>% 
+  ggplot(aes(father, son)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = b, slope = m)
+
+# Bivariate Normal Distribution example
+# plotting sons heigth vs standardized fathers height
+# to check that Y|X=x is ~Normal
+
+galton_heights %>% 
+  mutate(z_father = round((father - mean(father))/sd(father))) %>% 
+  filter(z_father %in% -2:2) %>% 
+  ggplot() +
+  stat_qq(aes(sample = son)) +
+  facet_wrap(~z_father)
+
+# computing E[father|son] regression line using the values above
+
+m <- r*s_x/s_y #slope
+b <- mu_x - m*mu_y
+m
+b
+# a plot of the fathers heights vs sons heights and the intercept and slope of regreesion line above
+galton_heights %>% 
+  ggplot(aes(son, father)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = b, slope = m)
