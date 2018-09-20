@@ -1,5 +1,5 @@
 # loading the required packages
-library(Lahman)
+?
 library(dslabs)
 library(tidyverse)
 
@@ -334,3 +334,152 @@ dat
 dat %>% 
   group_by(HR_per_game) %>% 
   do(fit = lm(R_per_game ~ BB_per_game, data = .))
+
+# playing witht the "broom" library
+
+library(broom)
+
+fit <- lm(R_per_game ~ BB_per_game, data = dat)
+tidy(fit)
+tidy(fit, conf.int = TRUE)
+
+dat %>% 
+  group_by(round(HR_per_game, 0.5)) %>% 
+  do(tidy(lm(R_per_game ~ BB_per_game, data = .), conf.int =TRUE))
+
+dat <- Teams %>% filter(yearID %in% 1961:2001) %>%
+  mutate(HR = HR/G,
+         R = R/G) %>%
+  select(lgID, HR, BB, R) 
+
+dat
+dat %>% 
+  group_by(lgID) %>% 
+  do(tidy(lm(R ~ HR, data = .), conf.int = T)) %>% 
+  filter(term == "HR") 
+
+dat %>% 
+  group_by(lgID) %>% 
+  do(glance(lm(R ~ HR, data = .)))
+
+# fitting a linear regression model w/ two predictors
+
+fit <- Teams %>%
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(BB = BB/G, HR = HR/G, R = R/G) %>% 
+  lm(R ~ BB + HR, data =.)
+
+tidy(fit, conf.int = TRUE)
+
+# fitting a linear model w/ many predictors
+fit <- Teams %>% 
+  filter(yearID %in% 1961:2001) %>% 
+  mutate(BB = BB/G,
+         singles = (H-X2B-X3B-HR)/G,
+         doubles = X2B/G,
+         triples = X3B/G,
+         HR = HR/G,
+         R = R/G) %>%
+  select(BB, singles, doubles, triples, HR, R) %>% 
+  lm(R ~., data = .)
+coef <- tidy(fit, conf.int = TRUE)
+coef
+
+# using the fitted model to predict runs R_hat in 2002
+
+Teams %>% 
+  filter(yearID %in% 2002) %>% 
+  mutate(BB = BB/G,
+         singles = (H-X2B-X3B-HR)/G,
+         doubles = X2B/G,
+         triples = X3B/G,
+         HR = HR/G,
+         R = R/G) %>%
+  mutate(R_hat = predict(fit, newdata = .)) %>% 
+  ggplot(aes(R_hat, R, label = teamID)) +
+  geom_point() +
+  geom_text(nudge_x = 0.1, cex = 2) +
+  geom_abline()
+coef$estimate
+Team_A <- c(1,2,4,1,0,1)
+sum(coef$estimate * Team_A)
+Team_B <- c(1,1,6,2,1,0)
+sum(coef$estimate * Team_B)
+
+pa_per_game <- Batting %>% 
+  filter(yearID == 2002) %>% 
+  group_by(teamID) %>%
+  summarize(pa_per_game = sum(AB+BB)/max(G)) %>% 
+  .$pa_per_game %>% 
+  mean
+pa_per_game
+
+players <- Batting %>% filter(yearID %in% 1999:2001) %>% 
+  group_by(playerID) %>%
+  mutate(PA = BB + AB) %>%
+  summarize(G = sum(PA)/pa_per_game,
+            BB = sum(BB)/G,
+            singles = sum(H-X2B-X3B-HR)/G,
+            doubles = sum(X2B)/G, 
+            triples = sum(X3B)/G, 
+            HR = sum(HR)/G,
+            AVG = sum(H)/sum(AB),
+            PA = sum(PA)) %>%
+  filter(PA >= 300) %>%
+  select(-G) %>%
+  mutate(R_hat = predict(fit, newdata = .))
+
+players %>% ggplot(aes(R_hat)) + 
+  geom_histogram(binwidth = 0.5, color = "black")
+
+players <- Salaries %>% 
+  filter(yearID == 2002) %>%
+  select(playerID, salary) %>%
+  right_join(players, by="playerID")
+
+ players <- Fielding %>% filter(yearID == 2002) %>%
+  filter(!POS %in% c("OF","P") %>%
+  group_by(playerID) %>%
+  top_n(1, G) %>%
+  filter(row_number(G) == 1) %>%
+  ungroup() %>%
+  select(playerID, POS) %>%
+  right_join(players, by="playerID") %>%
+  filter(!is.na(POS)  & !is.na(salary))
+
+players <- Master %>%
+  select(playerID, nameFirst, nameLast, debut) %>%
+  right_join(players, by="playerID")
+
+players %>% select(nameFirst, nameLast, POS, salary, R_hat) %>% 
+  arrange(desc(R_hat)) %>% 
+  top_n(10) 
+
+library(reshape2)
+library(lpSolve)
+players <- players %>% filter(debut <= 1997 & debut > 1988)
+constraint_matrix <- acast(players, POS ~ playerID, fun.aggregate = length)
+#> Using R_hat as value column: use value.var to override.
+npos <- nrow(constraint_matrix)
+constraint_matrix <- rbind(constraint_matrix, salary = players$salary)
+constraint_dir <- c(rep("==", npos), "<=")
+constraint_limit <- c(rep(1, npos), 50*10^6)
+lp_solution <- lp("max", players$R_hat,
+                  constraint_matrix, constraint_dir, constraint_limit,
+                  all.int = TRUE) 
+our_team <- players %>%
+  filter(lp_solution$solution == 1) %>%
+  arrange(desc(R_hat))
+our_team %>% select(nameFirst, nameLast, POS, salary, R_hat)
+
+my_scale <- function(x) (x - median(x))/mad(x)
+players %>% mutate(BB = my_scale(BB), 
+                   singles = my_scale(singles),
+                   doubles = my_scale(doubles),
+                   triples = my_scale(triples),
+                   HR = my_scale(HR),
+                   AVG = my_scale(AVG),
+                   R_hat = my_scale(R_hat)) %>%
+  filter(playerID %in% our_team$playerID) %>%
+  select(nameFirst, nameLast, BB, singles, doubles, triples, HR, AVG, R_hat) %>%
+  arrange(desc(R_hat))
