@@ -1,10 +1,10 @@
 # loading the required packages
-?
+
 library(dslabs)
 library(tidyverse)
 
 # looking at the Lahman library
-?`Lahman-package`
+library(Lahman)
 # checking out the Teams table
 str(Teams)
 
@@ -162,7 +162,8 @@ mu_x <- mean(galton_heights$father) # predictor var mean
 mu_y <- mean(galton_heights$ son) # predicted var mean
 s_x <- sd(galton_heights$father) # preditor var SD
 s_y <- sd(galton_heights$son) # predicted var SD
-r <- cor(galton_heights$father,galton_heights$son) # cor coeff
+r <- cor(galton_heights$father,galton_heights$son)# cor coeff
+m <- r*s_y/s_x
 m_1 <- r*s_y/s_x # slope
 b_1 <- mu_y - m*mu_x # intercept
 m_1
@@ -437,8 +438,9 @@ players <- Salaries %>%
   select(playerID, salary) %>%
   right_join(players, by="playerID")
 
- players <- Fielding %>% filter(yearID == 2002) %>%
-  filter(!POS %in% c("OF","P") %>%
+ players <- Fielding %>% 
+  filter(yearID == 2002) %>%
+  filter(!POS %in% c("OF","P")) %>%
   group_by(playerID) %>%
   top_n(1, G) %>%
   filter(row_number(G) == 1) %>%
@@ -483,3 +485,97 @@ players %>% mutate(BB = my_scale(BB),
   filter(playerID %in% our_team$playerID) %>%
   select(nameFirst, nameLast, BB, singles, doubles, triples, HR, AVG, R_hat) %>%
   arrange(desc(R_hat))
+
+Batting %>% 
+  filter(yearID %in% 1990:2001) %>% 
+  group_by(playerID, yearID) %>%
+  filter(BB + AB >= 300) %>%
+  mutate(PA = BB + AB, 
+         singles = (H-X2B-X3B-HR),
+         OPS = BB / PA + 
+           (singles + 2*X2B + 3*X3B + 4*HR)/AB,
+         G = PA/pa_per_game, 
+         BB = BB/G,
+         singles = singles/G,
+         doubles = X2B/G, 
+         triples = X3B/G,
+         HR = HR/G) %>%
+  ungroup() %>%
+  mutate(R_hat = predict(fit, newdata = .)) %>%
+  ungroup %>%
+  ggplot(aes(OPS, R_hat)) + 
+  geom_point()
+
+falling_object <- rfalling_object()
+falling_object
+
+falling_object %>% 
+  ggplot(aes(time, observed_distance)) +
+  geom_point() +
+  ylab("Distance in meters") +
+  xlab("Time in seconds")
+
+fit <- falling_object %>% 
+  mutate(time_sq = time^2) %>% 
+  lm(observed_distance ~ time + time_sq, data = .)
+tidy(fit)
+
+augment(fit) %>% 
+  ggplot() +
+  geom_point(aes(time, observed_distance)) +
+  geom_line(aes(time, .fitted), col = 'blue')
+
+tidy(fit, conf.int = TRUE)
+
+# Correlation is NOT Causation example
+
+N <- 25
+G <- 10^6
+sim_dat <- tibble(group = rep(1:G, each = N), X = rnorm(N*G), Y = rnorm(N*G))
+
+res <- sim_dat %>% 
+  group_by(group) %>% 
+  summarise(r = cor(X,Y)) %>% 
+  arrange(desc(r))
+res
+
+sim_dat %>% 
+  filter(group == res$group[which.max(res$r)]) %>% 
+  ggplot(aes(X,Y)) +
+  geom_point() +
+  geom_smooth(method = 'lm')
+
+res %>% 
+  ggplot(aes(x = r)) +
+  geom_histogram(binwidth = 0.1, color = 'black')
+
+sim_dat %>% 
+  filter(group == res$group[which.max(res$r)]) %>%
+  do(tidy(lm(Y ~ X, data = .)))
+
+# Correlation and Outlies - Spearman rank correlation
+
+# generating a sample data set with zero correlation but one extreme outlier
+set.seed(1)
+x <- rnorm(100,100,1)
+y <- rnorm(100,100,1)
+x[-23] <- scale(x[-23])
+y[-23] <- scale(y[-23])
+
+tibble(x,y) %>% ggplot(aes(x,y)) + geom_point(alpha = 0.5)
+
+# and checking correlation - the one extreme outlier makes correlation almost 1!
+cor(x,y)
+
+# One solution is to look at correlation on the rank of the values
+# the plot shows the transformaion removes the leverage of the outlier
+x_rank <- rank(x)
+y_rank <- rank(y)
+tibble(x_rank,y_rank) %>% 
+  ggplot(aes(x_rank, y_rank)) +
+  geom_point(alpha = 0.5) 
+
+# now correlation is closer to 0 where it should be
+cor(x_rank,y_rank)
+# can cause the "cor()" function to use Spearman
+cor(x,y, method = "spearman")  
